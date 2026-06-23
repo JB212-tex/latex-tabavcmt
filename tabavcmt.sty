@@ -1,0 +1,325 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{tabavcmt}[2026/06/14 v1.0 Tableaux d'avancement chimiques]
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Dépendances
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\RequirePackage{xparse}
+\RequirePackage{etoolbox}
+\RequirePackage{tikz}
+\RequirePackage{mhchem}
+\RequirePackage{bm}
+\RequirePackage{adjustbox}
+
+\usetikzlibrary{matrix,backgrounds,calc,babel}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Package
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\makeatletter
+\newdimen\tabav@doublesep
+\newcount\tabav@N
+\newcount\tabav@R
+
+\newcommand{\tabavreset}{%
+  \global\tabav@N=0
+  \global\tabav@R=0
+  \gdef\tabav@eqspecies{}%
+  \gdef\tabav@blankspecies{}%
+  \gdef\tabav@namespecies{}%
+  \gdef\tabav@initspecies{}%
+  \gdef\tabav@xispecies{}%
+  \gdef\tabav@xifspecies{}%
+  \gdef\tabav@xmaxspecies{}%
+}
+
+\newcommand{\tabavcoef}[2]{%
+  \ifstrequal{#1}{1}{#2}{#1\,#2}%
+}
+
+\ExplSyntaxOn
+\tl_new:N \l_tabav_species_tl
+
+\cs_new_protected:Npn \tabav_strip_state:n #1
+  {
+    \tl_set:Nn \l_tabav_species_tl {#1}
+    \regex_replace_once:nnN { \s* \( (aq|s|l|g) \) \s* \Z } { } \l_tabav_species_tl
+    \exp_args:NV \ce \l_tabav_species_tl
+  }
+\ExplSyntaxOff
+
+\ExplSyntaxOn
+\NewDocumentCommand{\tabavname}{m}
+  {
+    \tabavname_aux:w #1 \q_stop
+  }
+
+\cs_new_protected:Npn \tabavname_aux:w \ce #1 \q_stop
+  {
+    \tabav_strip_state:n {#1}
+  }
+\ExplSyntaxOff
+
+\newcommand{\tabavaddspecies}[5]{%
+  % #1 : reactif / produit
+  % #2 : largeur de colonne
+  % #3 : coefficient
+  % #4 : formule affichée
+  % #5 : quantité initiale
+
+  \global\advance\tabav@N by 1
+
+  \ifstrequal{#1}{reactif}{%
+    \global\advance\tabav@R by 1
+  }{}%
+
+  % Style de la colonne correspondante
+  \pgfmathtruncatemacro{\tabav@col}{\number\numexpr\tabav@N+2\relax}
+  % Ligne équation
+  \gappto\tabav@eqspecies{%
+    \pgfmatrixnextcell |[text width=#2]|
+    $\tabavcoef{#3}{#4}$%
+  }%
+
+  % Ligne vide grisée
+  \gappto\tabav@blankspecies{%
+    \pgfmatrixnextcell |[text width=#2]|
+    {}%
+  }%
+
+  % Ligne n(...)
+  \gappto\tabav@namespecies{%
+    \pgfmatrixnextcell |[text width=#2]|
+    $\bm{n}\textbf{(\tabavname{#4})}$%
+  }%
+
+  % État initial
+  \gappto\tabav@initspecies{%
+    \pgfmatrixnextcell |[text width=#2]|
+    $#5$%
+  }%
+
+  % Variations selon réactif ou produit
+  \ifstrequal{#1}{reactif}
+  {%
+    \gappto\tabav@xispecies{%
+      \pgfmatrixnextcell |[text width=#2]|
+      $#5-#3\tabav@var$%
+    }%
+    \gappto\tabav@xifspecies{%
+      \pgfmatrixnextcell |[text width=#2]|
+      $#5-#3\tabav@var_f$%
+    }%
+    \gappto\tabav@xmaxspecies{%
+      \pgfmatrixnextcell |[text width=#2]|
+      $#5-#3\tabav@var_{\max}$%
+    }%
+  }
+  {%
+    \gappto\tabav@xispecies{%
+      \pgfmatrixnextcell |[text width=#2]|
+      $#5+#3\tabav@var$%
+    }%
+    \gappto\tabav@xifspecies{%
+      \pgfmatrixnextcell |[text width=#2]|
+      $#5+#3\tabav@var_f$%
+    }%
+    \gappto\tabav@xmaxspecies{%
+      \pgfmatrixnextcell |[text width=#2]|
+      $#5+#3\tabav@var_{\max}$%
+    }%
+  }%
+}
+
+\NewDocumentCommand{\reactif}{O{3cm} m m m}{%
+  \tabavaddspecies{reactif}{#1}{#2}{#3}{#4}%
+}
+
+\NewDocumentCommand{\produit}{O{3cm} m m m}{%
+  \tabavaddspecies{produit}{#1}{#2}{#3}{#4}%
+}
+
+\pgfkeys{
+  /tabavcmt/.is family,
+  /tabavcmt,
+  fill/.store in=\tabav@fill,
+  draw/.store in=\tabav@draw,
+  xi/.store in=\tabav@xi,
+  font size/.store in=\tabav@fontsize,
+  scale/.store in=\tabav@scale,
+  ligne totale/.store in=\tabav@lignetotale,
+  linewidth/.store in=\tabav@linewidth,
+  inter dbl lgn/.store in=\tabav@doublefactor,
+  separation/.store in=\tabav@separator,
+  fill=gray!10,
+  draw=black,
+  xi=1,
+  font size=\normalsize,
+  scale=1,
+  ligne totale=oui,
+  linewidth=1pt,
+  inter dbl lgn=1.2,
+  separation=double
+}
+
+
+
+\tikzset{
+  tabav matrix/.style={
+    matrix of nodes,
+    nodes in empty cells,
+    nodes={
+      align=center,
+      inner sep=0pt,
+      outer sep=0pt,
+      minimum height=9mm,
+      text height=2.2ex,
+      text depth=0.8ex
+    },
+    row sep=-\pgflinewidth,
+    column sep=-\pgflinewidth,
+    column 1/.style={nodes={text width=3.5cm, align=left, inner xsep=5pt}},
+    column 2/.style={nodes={text width=3cm}}
+  }
+}
+
+\newcommand{\tabavdraw}{%
+\pgfmathsetlength{\tabav@doublesep}{\tabav@doublefactor*\tabav@linewidth}
+  \begin{tikzpicture}
+  \tabav@fontsize
+  \def\tabav@oui{oui}%
+  \def\tabav@double{double}%
+  
+  \ifx\tabav@lignetotale\tabav@oui
+    \def\tabav@lastrow{7}%
+    \matrix (M) [tabav matrix]
+    {
+    {} \pgfmatrixnextcell {} \tabav@eqspecies \\
+    {} \pgfmatrixnextcell {} \tabav@blankspecies \\
+    {} \pgfmatrixnextcell {} \tabav@namespecies \\
+    {\fontfamily{phv}\selectfont État initial} \pgfmatrixnextcell $\tabav@var=0$ \tabav@initspecies \\
+    {\fontfamily{phv}\selectfont État intermédiaire} \pgfmatrixnextcell $0<\tabav@var(t)<\tabav@var_f$ \tabav@xispecies \\
+    {\fontfamily{phv}\selectfont État final} \pgfmatrixnextcell $\tabav@var_f<\tabav@var_{\max}$ \tabav@xifspecies \\
+    {\fontfamily{phv}\selectfont État final (si totale)} \pgfmatrixnextcell $\tabav@var_f=\tabav@var_{\max}$ \tabav@xmaxspecies \\
+    };
+  \else
+    \def\tabav@lastrow{6}%
+    \matrix (M) [tabav matrix]
+    {
+    {} \pgfmatrixnextcell {} \tabav@eqspecies \\
+    {} \pgfmatrixnextcell {} \tabav@blankspecies \\
+    {} \pgfmatrixnextcell {} \tabav@namespecies \\
+    {\fontfamily{phv}\selectfont État initial} \pgfmatrixnextcell $\tabav@var=0$ \tabav@initspecies \\
+    {\fontfamily{phv}\selectfont État intermédiaire} \pgfmatrixnextcell $0<\tabav@var(t)<\tabav@var_f$ \tabav@xispecies \\
+    {\fontfamily{phv}\selectfont État final} \pgfmatrixnextcell $\tabav@var_f\leq\tabav@var_{\max}$ \tabav@xifspecies \\
+    };
+  \fi
+
+\pgfmathtruncatemacro{\tabavtotal}{\number\numexpr\tabav@N+2\relax}
+\pgfmathtruncatemacro{\tabavfirstproduct}{\number\numexpr\tabav@R+3\relax}
+  
+  \begin{scope}[on background layer]
+  \fill[\tabav@fill] (M-1-1.north west) rectangle (M-1-2.south east);
+  \fill[\tabav@fill] (M-2-1.north west) rectangle (M-2-\tabavtotal.south east);
+  \fill[\tabav@fill] (M-3-1.north west) rectangle (M-3-\tabavtotal.south east);
+\end{scope}
+
+  % Bordures horizontales
+  \draw[\tabav@draw, line width=\tabav@linewidth] (M-1-1.north west) rectangle (M-\tabav@lastrow-\tabavtotal.south east);
+  \draw[\tabav@draw, line width=\tabav@linewidth] (M-2-3.south west) -- (M-2-\tabavtotal.south east);
+
+  \foreach \i in {1,3,4,5}
+    \draw[\tabav@draw, line width=\tabav@linewidth] (M-\i-1.south west) -- (M-\i-\tabavtotal.south east);
+
+  % Double ligne horizontale seulement si la ligne totale existe
+  \ifx\tabav@lignetotale\tabav@oui
+    \ifx\tabav@separator\tabav@double
+      \draw[\tabav@draw, line width=\tabav@linewidth] ($(M-6-1.south west)+(0,\tabav@doublesep)$) -- ($(M-6-\tabavtotal.south east)+(0,\tabav@doublesep)$);
+      \draw[\tabav@draw, line width=\tabav@linewidth] ($(M-6-1.south west)-(0,\tabav@doublesep)$) -- ($(M-6-\tabavtotal.south east)-(0,\tabav@doublesep)$);
+    \else
+      \draw[\tabav@draw,line width=\tabav@linewidth] (M-6-1.south west) -- (M-6-\tabavtotal.south east);
+    \fi
+  \fi
+  
+  % Bordures verticales
+  \draw[\tabav@draw, line width=\tabav@linewidth] (M-2-2.north west) -- (M-\tabav@lastrow-2.south west);
+  \draw[\tabav@draw, line width=\tabav@linewidth] (M-1-3.north west) -- (M-\tabav@lastrow-3.south west);
+
+  \foreach \j in {4,...,\tabavtotal}
+  {
+    \ifnum\j=\tabavfirstproduct
+       \ifx\tabav@separator\tabav@double
+          \draw[\tabav@draw, line width=\tabav@linewidth] ($(M-3-\j.north west)+(\tabav@doublesep,0)$) -- ($(M-\tabav@lastrow-\j.south west)+(\tabav@doublesep,0)$);
+          \draw[\tabav@draw, line width=\tabav@linewidth] ($(M-3-\j.north west)-(\tabav@doublesep,0)$) -- ($(M-\tabav@lastrow-\j.south west)-(\tabav@doublesep,0)$);
+       \else
+          \draw[\tabav@draw, line width=\tabav@linewidth] (M-3-\j.north west) -- (M-\tabav@lastrow-\j.south west);
+       \fi
+    \else
+      \draw[\tabav@draw, line width=\tabav@linewidth] (M-3-\j.north west) -- (M-\tabav@lastrow-\j.south west);
+    \fi
+  }
+
+  % Étiquettes
+  \node at ($(M-1-1.west)!0.5!(M-1-2.east)$)
+    {\fontfamily{phv}\selectfont\textbf{Équation de la réaction}};
+
+  \node[align=center, text width=3cm]
+    at ($(M-2-1.north)!0.5!(M-3-1.south)$)
+    {\fontfamily{phv}\selectfont\textbf{État du système}};
+
+  \node[align=center, text width=3cm]
+    at ($(M-2-2.north)!0.5!(M-3-2.south)$)
+    {\fontfamily{phv}\selectfont\textbf{Avancement (mol)}};
+
+  \node at ($(M-2-3.west)!0.5!(M-2-\tabavtotal.east)$)
+    {\fontfamily{phv}\selectfont\textbf{Quantités de matière (mol)}};
+
+  % + entre réactifs
+  \ifnum\tabav@R>1
+  \foreach \k in {1,...,\number\numexpr\tabav@R-1\relax}
+  {
+    \pgfmathtruncatemacro{\cola}{\k+2}
+    \pgfmathtruncatemacro{\colb}{\k+3}
+    \node at ($(M-1-\cola.east)!0.5!(M-1-\colb.west)$) {$+$};
+  }
+\fi
+
+% Flèche entre réactifs et produits
+\pgfmathtruncatemacro{\colreact}{\number\numexpr\tabav@R+2\relax}
+\pgfmathtruncatemacro{\colprod}{\number\numexpr\tabav@R+3\relax}
+\node at ($(M-1-\colreact.east)!0.5!(M-1-\colprod.west)$) {$\ce{->}$};
+
+% + entre produits
+\pgfmathtruncatemacro{\tabavnbprod}{\number\numexpr\tabav@N-\tabav@R\relax}
+
+\ifnum\tabavnbprod>1
+  \foreach \k in {1,...,\number\numexpr\tabavnbprod-1\relax}
+  {
+    \pgfmathtruncatemacro{\cola}{\number\numexpr\tabav@R+2+\k\relax}
+    \pgfmathtruncatemacro{\colb}{\number\numexpr\tabav@R+3+\k\relax}
+    \node at ($(M-1-\cola.east)!0.5!(M-1-\colb.west)$) {$+$};
+  }
+\fi
+  \end{tikzpicture}
+}
+
+\NewDocumentEnvironment{tabavcmt}{O{}}{%
+  \pgfkeys{/tabavcmt, fill=gray!10, draw=black, xi=1, scale=1, ligne totale=oui, linewidth=1pt, inter dbl lgn=1.2, separation=double, #1}%
+  \def\tabav@zero{0}%
+  \ifx\tabav@xi\tabav@zero
+    \def\tabav@var{x}%
+  \else
+    \def\tabav@var{\xi}%
+  \fi
+  \tabavreset
+}{%
+  \begin{adjustbox}{max width=\tabav@scale\linewidth}
+    \tabavdraw
+  \end{adjustbox}%
+}
+
+\makeatother
+
+\endinput
